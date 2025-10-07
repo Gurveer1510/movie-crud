@@ -22,7 +22,7 @@ func ConnectDb() {
 		log.Fatalf("Failed to connect to database: %v\n",err)
 	}
 	
-	log.Println("Connected to NeonDB")
+	log.Println("Connected to DB")
 	queryBytes, err := os.ReadFile("db/queries/create_table.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL File: %v\n", err)
@@ -33,6 +33,7 @@ func ConnectDb() {
 	_, err = Conn.Exec(context.Background(), query)
 	if err != nil {
 		log.Fatalf("Failed to run migration: %v\n", err)
+		return
 	}
 
 	log.Println("Movie Table is READY!! ^_^")

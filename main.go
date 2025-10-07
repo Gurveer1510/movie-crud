@@ -16,11 +16,14 @@ func main () {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No ENV File found.")
+		return
 	}
 	db.ConnectDb()
 	defer db.Conn.Close(context.Background())
 	
 	http.HandleFunc("/movies/create", handlers.CreateMovie)
+	http.HandleFunc("/movies", handlers.GetAllMovies)
+	http.HandleFunc("/movies/{movie_name}", handlers.GetMovieByName)
 
 	port := os.Getenv("PORT")
 	if port == "" {
