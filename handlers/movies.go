@@ -22,6 +22,7 @@ type IMDBResp struct {
 	IMDBRating string `json:"imdbRating"`
 	Runtime    string `json:"Runtime"`
 	Plot       string `json:"Plot"`
+	Response   string `json:"Response"`
 }
 
 func CreateMovie(w http.ResponseWriter, r *http.Request) {
@@ -35,27 +36,44 @@ func CreateMovie(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid json payload", http.StatusBadRequest)
 		return
 	}
+	
+	if len(strings.TrimSpace(input.MovieName)) == 0 {
+		http.Error(w, "Movie Name is required", http.StatusBadRequest)
+		return
+	}
 
 	omdbAPI := os.Getenv("API_KEY")
+	if omdbAPI == "" {
+		http.Error(w, "API KEY NOT FOUND FOR OMDB", http.StatusInternalServerError)
+		return
+	}
 	baseUrl := "https://www.omdbapi.com/"
 	movieName := input.MovieName
 	params := url.Values{}
 	params.Add("t", movieName)
 	params.Add("apikey", omdbAPI)
 	imdbUrl := fmt.Sprintf("%s?%s", baseUrl, params.Encode())
-	response, _ := http.Get(imdbUrl)
+	response, err := http.Get(imdbUrl)
 
+	if err != nil {
+		http.Error(w, fmt.Sprintf("No Movie found for the name: %v", input.MovieName), http.StatusNotFound)
+	}
+	
 	defer response.Body.Close()
-
+	
 	resBody, respErr := io.ReadAll(response.Body)
 	if respErr != nil {
 		fmt.Println("Error reading Body:", respErr)
 		return
 	}
-
+	
 	var result IMDBResp
-
+	
 	parsingError := json.Unmarshal(resBody, &result)
+	
+	if result.Response == "False" {
+		http.Error(w, fmt.Sprintf("No Movie found for the name: %v", input.MovieName), http.StatusNotFound)
+	}
 
 	if parsingError != nil {
 		fmt.Println("Error decoding imdb data:", parsingError)
@@ -64,12 +82,14 @@ func CreateMovie(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Title: %s\nReleased: %s\nRating: %s\nRuntime: %s\nPlot: %s",
 		result.Title, result.Released, result.IMDBRating, result.Runtime, result.Plot)
 
+	var formatted string
 	t, parseError := time.Parse("02 Jan 2006", result.Released)
 	if parseError != nil {
 		fmt.Println("Found Incorrect format for the release date\n", parseError)
-		return
+		formatted = "N/A"
+	} else {
+		formatted = t.Format("2006-01-02")
 	}
-	formatted := t.Format("2006-01-02")
 
 	runtimeStr := strings.Split(result.Runtime, " ")[0]
 	runtime, err := strconv.Atoi(runtimeStr)
@@ -124,6 +144,8 @@ func CreateMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Location", fmt.Sprintf("/movies/%s", url.PathEscape(movie.MovieName)))
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
 }
 
@@ -133,7 +155,7 @@ func GetAllMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT id, movie_name, synopsis, runtime_minutes, imdb_rating, release_date FROM movies;`
+	query := `SELECT id, movie_name, synopsis, runtime_minutes, imdb_rating, release_date FROM movies WHERE is_deleted = FALSE;`
 	rows, err := db.Conn.Query(context.Background(), query)
 	if err != nil {
 		http.Error(w, "Error in getting movies from database", http.StatusInternalServerError)
@@ -174,7 +196,7 @@ func GetMovieByName(w http.ResponseWriter, r *http.Request) {
 		SELECT id, movie_name, synopsis, runtime_minutes, imdb_rating, release_date,
        SIMILARITY(movie_name, $1) AS sim
 FROM movies
-WHERE movie_name % $2
+WHERE movie_name % $2 AND is_deleted = FALSE
 ORDER BY sim DESC;
 	`
 	_, _ = db.Conn.Exec(context.Background(), "SET pg_trgm.similarity_threshold = 0.2")
