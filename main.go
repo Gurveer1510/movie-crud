@@ -12,7 +12,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func main () {
+func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No ENV File found.")
@@ -20,10 +20,11 @@ func main () {
 	}
 	db.ConnectDb()
 	defer db.Conn.Close(context.Background())
-	
+
 	http.HandleFunc("/movies/create", handlers.CreateMovie)
-	http.HandleFunc("/movies", handlers.GetAllMovies)
-	http.HandleFunc("/movies/{movie_name}", handlers.GetMovieByName)
+	http.HandleFunc("/movies/all", handlers.GetAllMovies)
+	http.HandleFunc("/movies", handlers.GetMovieByName)
+	http.HandleFunc("/movies/{id}/update", handlers.UpdateMovieById)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -31,5 +32,5 @@ func main () {
 	}
 
 	log.Printf("Server running at http://localhost:%s", port)
-	http.ListenAndServe(fmt.Sprintf(":%v",port), nil)
+	http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
 }
